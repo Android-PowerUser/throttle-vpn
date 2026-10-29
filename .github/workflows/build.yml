@@ -1,0 +1,40 @@
+name: Build APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+      - name: Build
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
+      - name: Report errors as commit comment
+        if: failure()
+        run: |
+          { echo '```'; grep -E '^e: |error:|What went wrong|FAILED|Exception|^> ' build.log | head -n 80 | cut -c1-400; echo '```'; } > err.md
+          gh api repos/${{ github.repository }}/commits/${{ github.sha }}/comments -F body=@err.md
+      - name: Prepare APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk throttle-vpn.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: throttle-vpn-debug
+          path: throttle-vpn.apk
+      - name: Publish release (public download link)
+        run: |
+          gh release delete latest --cleanup-tag -y || true
+          gh release create latest throttle-vpn.apk --title "Latest build" --notes "Automatischer Build von ${{ github.sha }}" --target ${{ github.sha }}
