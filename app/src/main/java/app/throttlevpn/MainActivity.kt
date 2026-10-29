@@ -204,8 +204,7 @@ fun SpeedSlider(title: String, initial: Int, onChange: (Int) -> Unit) {
                     onChange(n)
                 }
             },
-            valueRange = 0f..12f,
-            steps = 11
+            valueRange = 0f..1000f
         )
     }
 }
