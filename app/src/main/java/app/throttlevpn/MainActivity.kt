@@ -136,7 +136,7 @@ fun Screen() {
                         Switch(
                             checked = LimitStore.globalEnabled,
                             onCheckedChange = {
-                                LimitStore.setGlobalEnabled(it)
+                                LimitStore.enableGlobal(it)
                                 restartIfRunning(ctx)
                             }
                         )

@@ -50,7 +50,7 @@ object LimitStore {
         global.down.rate = if (globalEnabled) STEPS[global.downIdx] else 0
     }
 
-    fun setGlobalEnabled(v: Boolean) {
+    fun enableGlobal(v: Boolean) {
         globalEnabled = v
         prefs.edit().putBoolean("gen", v).apply()
         applyGlobal()
