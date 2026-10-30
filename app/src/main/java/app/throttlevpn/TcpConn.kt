@@ -105,7 +105,6 @@ class TcpConn(
                 if (n < 0) break
                 if (n == 0) continue
                 lastActive = System.currentTimeMillis()
-                for (l in down) l.acquire(n)
                 sendData(buf, n)
             }
         } catch (e: Exception) {
@@ -124,7 +123,7 @@ class TcpConn(
             val x = l.rate
             if (x > 0 && (r == 0L || x < r)) r = x
         }
-        return if (r == 0L) 16384 else (r / 10).coerceIn(1400L, 16384L).toInt()
+        return if (r == 0L) 16384 else (r / 20).coerceIn(1400L, 16384L).toInt()
     }
 
     private fun sendData(buf: ByteArray, len: Int) {
@@ -133,6 +132,7 @@ class TcpConn(
         while (rem > 0 && !closed) {
             var seg = 0
             var seq = 0
+            RateLimiter.acquireAll(down, minOf(rem, mss))
             lock.withLock {
                 while (!closed && clientWindow - (sndNxt - sndUna) <= 0) {
                     cond.await(500, TimeUnit.MILLISECONDS)
@@ -221,9 +221,14 @@ class TcpConn(
                     try { c.shutdownOutput() } catch (_: Exception) {}
                     return
                 }
-                for (l in up) l.acquire(d.size)
-                val bb = ByteBuffer.wrap(d)
-                while (bb.hasRemaining()) c.write(bb)
+                var o = 0
+                while (o < d.size && !closed) {
+                    val sz = minOf(1400, d.size - o)
+                    RateLimiter.acquireAll(up, sz)
+                    val bb = ByteBuffer.wrap(d, o, sz)
+                    while (bb.hasRemaining()) c.write(bb)
+                    o += sz
+                }
                 lastActive = System.currentTimeMillis()
                 val q = queued.addAndGet(-d.size)
                 if (65535 - (q + d.size) < 16384) sendAck()

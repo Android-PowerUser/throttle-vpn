@@ -46,7 +46,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import kotlin.concurrent.thread
-import kotlin.math.roundToInt
 
 data class AppInfo(val pkg: String, val label: String)
 
@@ -142,8 +141,8 @@ fun Screen() {
                         )
                     }
                     if (LimitStore.globalEnabled) {
-                        SpeedSlider("Upload", LimitStore.global.upIdx) { LimitStore.setGlobalUp(it) }
-                        SpeedSlider("Download", LimitStore.global.downIdx) { LimitStore.setGlobalDown(it) }
+                        SpeedSlider("Upload", LimitStore.global.upRate) { LimitStore.setGlobalUp(it) }
+                        SpeedSlider("Download", LimitStore.global.downRate) { LimitStore.setGlobalDown(it) }
                     }
                 }
             }
@@ -181,8 +180,8 @@ fun Screen() {
                     }
                     if (sel) {
                         val l = LimitStore.limits(app.pkg)
-                        SpeedSlider("Upload", l.upIdx) { LimitStore.setUp(app.pkg, it) }
-                        SpeedSlider("Download", l.downIdx) { LimitStore.setDown(app.pkg, it) }
+                        SpeedSlider("Upload", l.upRate) { LimitStore.setUp(app.pkg, it) }
+                        SpeedSlider("Download", l.downRate) { LimitStore.setDown(app.pkg, it) }
                     }
                 }
             }
@@ -191,20 +190,20 @@ fun Screen() {
 }
 
 @Composable
-fun SpeedSlider(title: String, initial: Int, onChange: (Int) -> Unit) {
-    var v by remember { mutableStateOf(initial) }
+fun SpeedSlider(title: String, initialRate: Long, onChange: (Long) -> Unit) {
+    var pos by remember { mutableStateOf(LimitStore.posFromRate(initialRate)) }
     Column {
-        Text("$title: ${LimitStore.label(v)}", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "$title: ${LimitStore.label(LimitStore.rateFromPos(pos))}",
+            style = MaterialTheme.typography.bodyMedium
+        )
         Slider(
-            value = v.toFloat(),
+            value = pos,
             onValueChange = {
-                val n = it.roundToInt()
-                if (n != v) {
-                    v = n
-                    onChange(n)
-                }
+                pos = it
+                onChange(LimitStore.rateFromPos(it))
             },
-            valueRange = 0f..1000f
+            valueRange = 0f..1f
         )
     }
 }

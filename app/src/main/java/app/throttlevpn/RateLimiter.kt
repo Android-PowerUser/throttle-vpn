@@ -1,29 +1,25 @@
 package app.throttlevpn
 
-/** Simple pacing limiter. rate = bytes/second, 0 = unlimited. Rate can change live. */
+import java.util.concurrent.locks.LockSupport
+
+/** Pacing limiter. rate = bytes/second, 0 = unlimited. Rate can change live. */
 class RateLimiter {
     @Volatile var rate: Long = 0L
     private var next = 0L
     private val lock = Any()
-    private val burstNs = 100_000_000L
+    private val burstNs = 10_000_000L
 
-    /** Blocks until n bytes may pass. */
-    fun acquire(n: Int) {
+    /** Reserves n bytes and returns how many ns the caller must wait before sending. */
+    fun reserve(n: Int): Long {
         val r = rate
-        if (r <= 0) return
-        var wait: Long
+        if (r <= 0) return 0L
         synchronized(lock) {
             val now = System.nanoTime()
             if (next < now - burstNs) next = now - burstNs
             if (next > now + 5_000_000_000L) next = now + 5_000_000_000L
-            wait = next - now
+            val wait = next - now
             next += n * 1_000_000_000L / r
-        }
-        if (wait > 0) {
-            try {
-                Thread.sleep(wait / 1_000_000L, (wait % 1_000_000L).toInt())
-            } catch (_: InterruptedException) {
-            }
+            return wait
         }
     }
 
@@ -34,9 +30,27 @@ class RateLimiter {
         synchronized(lock) {
             val now = System.nanoTime()
             if (next < now - burstNs) next = now - burstNs
-            if (next - now > 300_000_000L) return false
+            if (next - now > 100_000_000L) return false
             next += n * 1_000_000_000L / r
             return true
+        }
+    }
+
+    companion object {
+        /** Reserves in all limiters, then waits only once for the longest delay. */
+        fun acquireAll(list: List<RateLimiter>, n: Int) {
+            var w = 0L
+            for (l in list) {
+                val x = l.reserve(n)
+                if (x > w) w = x
+            }
+            if (w < 1_000_000L) return // debt stays booked, paid back by later waits
+            val end = System.nanoTime() + w
+            while (!Thread.currentThread().isInterrupted) {
+                val rem = end - System.nanoTime()
+                if (rem <= 0) break
+                LockSupport.parkNanos(rem)
+            }
         }
     }
 }
