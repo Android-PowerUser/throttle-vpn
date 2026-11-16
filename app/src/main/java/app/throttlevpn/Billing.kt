@@ -102,7 +102,7 @@ object Billing {
                     it.purchaseState == Purchase.PurchaseState.PURCHASED && PRODUCT_ID in it.products
                 }
                 owned.forEach { acknowledge(it) }
-                Access.setPremium(owned.isNotEmpty())
+                Access.unlock(owned.isNotEmpty())
             }
         }
     }
@@ -120,7 +120,7 @@ object Billing {
             when (p.purchaseState) {
                 Purchase.PurchaseState.PURCHASED -> {
                     acknowledge(p)
-                    Access.setPremium(true)
+                    Access.unlock(true)
                     toast("Thank you! Full version unlocked.")
                 }
                 Purchase.PurchaseState.PENDING -> toast("Payment pending. The app unlocks when it completes.")

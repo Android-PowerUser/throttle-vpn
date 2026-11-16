@@ -32,7 +32,7 @@ object Access {
         }
     }
 
-    fun setPremium(v: Boolean) {
+    fun unlock(v: Boolean) {
         premium = v
         prefs.edit().putBoolean("premium", v).apply()
     }
