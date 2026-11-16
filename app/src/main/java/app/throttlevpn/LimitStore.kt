@@ -97,7 +97,7 @@ object LimitStore {
 
     fun label(idx: Int): String {
         val v = rateFor(idx)
-        if (v == 0L) return "Unbegrenzt"
+        if (v == 0L) return "Unlimited"
         return if (v >= 1_000_000) String.format("%.1f MB/s", v / 1_000_000.0) else "${v / 1000} KB/s"
     }
 }

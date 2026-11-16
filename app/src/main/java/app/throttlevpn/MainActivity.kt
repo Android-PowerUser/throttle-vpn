@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +32,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -44,6 +46,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.delay
 import androidx.core.graphics.drawable.toBitmap
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
@@ -51,9 +55,16 @@ import kotlin.math.roundToInt
 data class AppInfo(val pkg: String, val label: String)
 
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        Billing.refresh()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         LimitStore.init(this)
+        Access.init(this)
+        Billing.init(this)
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) { Screen() }
@@ -76,6 +87,44 @@ fun Screen() {
     var query by remember { mutableStateOf("") }
     val running = ThrottleVpnService.running
     val selected = LimitStore.selected
+    val activity = ctx as android.app.Activity
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    var showDialog by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val allowed = Access.allowed(now)
+    val left = Access.remainingMs(now)
+    fun fmt(ms: Long): String = "%d:%02d".format(ms / 60000, (ms / 1000) % 60)
+
+    if (showDialog && !Access.premium) {
+        val intro = Access.trialStart == 0L
+        AlertDialog(
+            onDismissRequest = {},
+            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+            title = { Text(if (intro) "Try it for 5 minutes" else if (allowed) "Trial running" else "Trial ended") },
+            text = {
+                Text(
+                    if (intro) "You can test Throttle VPN for 5 minutes. After that, a one-time purchase of ${Billing.price} unlocks it permanently."
+                    else if (allowed) "${fmt(left)} left in your free trial. Afterwards the app costs ${Billing.price} (one-time)."
+                    else "Your 5-minute trial is over. Unlock the full version for ${Billing.price} (one-time purchase)."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (intro) { Access.startTrial(); showDialog = false }
+                    else if (allowed) showDialog = false
+                    else { showDialog = false; Billing.buy(activity) }
+                }) { Text(if (intro) "Start trial" else if (allowed) "OK" else "Unlock ${Billing.price}") }
+            },
+            dismissButton = if (!intro && !allowed) {
+                { TextButton(onClick = { showDialog = false }) { Text("Not now") } }
+            } else null
+        )
+    }
 
     LaunchedEffect(Unit) {
         thread {
@@ -105,13 +154,24 @@ fun Screen() {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Throttle VPN", style = MaterialTheme.typography.headlineMedium)
                 Text(
-                    if (running) "VPN läuft – Limits aktiv" else "VPN ist aus",
+                    if (running) "VPN running \u2013 limits active" else "VPN is off",
                     style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    when {
+                        Access.premium -> "Full version unlocked"
+                        Access.trialStart == 0L -> "Free trial: 5 minutes"
+                        allowed -> "Free trial: ${fmt(left)} left"
+                        else -> "Trial ended"
+                    },
+                    style = MaterialTheme.typography.bodySmall
                 )
                 Button(
                     onClick = {
                         if (running) {
                             ctx.startService(vpnIntent(ctx, ThrottleVpnService.ACTION_STOP))
+                        } else if (!allowed) {
+                            if (Access.trialStart == 0L) showDialog = true else Billing.buy(activity)
                         } else {
                             val i = VpnService.prepare(ctx)
                             if (i != null) launcher.launch(i)
@@ -119,7 +179,7 @@ fun Screen() {
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(if (running) "Stoppen" else "Starten") }
+                ) { Text(if (running) "Stop" else if (allowed) "Start" else "Unlock ${Billing.price}") }
             }
         }
         item {
@@ -127,9 +187,9 @@ fun Screen() {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Ganzes Gerät", style = MaterialTheme.typography.titleMedium)
+                            Text("Whole device", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "Begrenzt den gesamten Traffic aller Apps",
+                                "Limits the traffic of all apps",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -152,7 +212,7 @@ fun Screen() {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                label = { Text("App suchen") },
+                label = { Text("Search apps") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )

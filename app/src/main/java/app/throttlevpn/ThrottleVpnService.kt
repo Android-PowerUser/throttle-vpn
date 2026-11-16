@@ -3,7 +3,10 @@ package app.throttlevpn
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.VpnService
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -31,9 +34,22 @@ class ThrottleVpnService : VpnService() {
     private val tcpMap = ConcurrentHashMap<String, TcpConn>()
     private val udpMap = ConcurrentHashMap<String, UdpFlow>()
     @Volatile private var uidMap: Map<Int, String> = emptyMap()
+    private val handler = Handler(Looper.getMainLooper())
+    private val expiry = Runnable {
+        if (!Access.allowed()) {
+            Toast.makeText(
+                this, "Trial ended \u2013 VPN turned off. Unlock the app to keep using it.",
+                Toast.LENGTH_LONG
+            ).show()
+            LimitStore.wanted = false
+            stopVpn()
+            stopSelf()
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         LimitStore.init(this)
+        Access.init(this)
         when (intent?.action) {
             ACTION_STOP -> {
                 LimitStore.wanted = false
@@ -70,6 +86,12 @@ class ThrottleVpnService : VpnService() {
 
     private fun startVpn() {
         stopVpn()
+        if (!Access.allowed()) {
+            Toast.makeText(this, "Trial ended. Unlock the app to use the VPN.", Toast.LENGTH_LONG).show()
+            LimitStore.wanted = false
+            stopSelf()
+            return
+        }
         LimitStore.wanted = true
         val b = Builder()
             .setSession("Throttle VPN")
@@ -79,8 +101,6 @@ class ThrottleVpnService : VpnService() {
             .addRoute("0.0.0.0", 0)
             .addAddress("fd00:8::2", 128)
             .addRoute("::", 0)
-            .addDnsServer("1.1.1.1")
-            .addDnsServer("8.8.8.8")
 
         val map = HashMap<Int, String>()
         for (pkg in LimitStore.selected) {
@@ -118,6 +138,7 @@ class ThrottleVpnService : VpnService() {
         val s = Any()
         session = s
         running = true
+        if (!Access.premium) handler.postDelayed(expiry, Access.remainingMs() + 300)
 
         Thread {
             val inp = FileInputStream(fd.fileDescriptor)
@@ -144,6 +165,7 @@ class ThrottleVpnService : VpnService() {
     }
 
     private fun stopVpn() {
+        handler.removeCallbacks(expiry)
         session = null
         running = false
         for (c in tcpMap.values) c.close()
