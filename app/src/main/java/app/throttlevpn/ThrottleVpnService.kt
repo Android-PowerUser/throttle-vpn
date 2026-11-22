@@ -138,7 +138,7 @@ class ThrottleVpnService : VpnService() {
         val s = Any()
         session = s
         running = true
-        if (!Access.premium) handler.postDelayed(expiry, Access.remainingMs() + 300)
+        Access.expiryListener = { handler.post(expiry) }
 
         Thread {
             val inp = FileInputStream(fd.fileDescriptor)
@@ -166,6 +166,7 @@ class ThrottleVpnService : VpnService() {
 
     private fun stopVpn() {
         handler.removeCallbacks(expiry)
+        Access.expiryListener = null
         session = null
         running = false
         for (c in tcpMap.values) c.close()

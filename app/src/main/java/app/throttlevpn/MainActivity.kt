@@ -57,7 +57,13 @@ data class AppInfo(val pkg: String, val label: String)
 class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
+        Access.foreground = true
         Billing.refresh()
+    }
+
+    override fun onPause() {
+        Access.foreground = false
+        super.onPause()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,37 +94,26 @@ fun Screen() {
     val running = ThrottleVpnService.running
     val selected = LimitStore.selected
     val activity = ctx as android.app.Activity
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var showDialog by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            now = System.currentTimeMillis()
-        }
-    }
-    val allowed = Access.allowed(now)
-    val left = Access.remainingMs(now)
-    fun fmt(ms: Long): String = "%d:%02d".format(ms / 60000, (ms / 1000) % 60)
+    val allowed = Access.allowed()
+    val intro = !Access.trialStarted
 
-    if (showDialog && !Access.premium) {
-        val intro = Access.trialStart == 0L
+    if (showDialog && !Access.premium && (intro || !allowed)) {
         AlertDialog(
             onDismissRequest = {},
             properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
-            title = { Text(if (intro) "Try it for 5 minutes" else if (allowed) "Trial running" else "Trial ended") },
+            title = { Text(if (intro) "Try it for 5 minutes" else "Trial ended") },
             text = {
                 Text(
                     if (intro) "You can test Throttle VPN for 5 minutes. After that, a one-time purchase of ${Billing.price} unlocks it permanently."
-                    else if (allowed) "${fmt(left)} left in your free trial. Afterwards the app costs ${Billing.price} (one-time)."
                     else "Your 5-minute trial is over. Unlock the full version for ${Billing.price} (one-time purchase)."
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     if (intro) { Access.startTrial(); showDialog = false }
-                    else if (allowed) showDialog = false
                     else { showDialog = false; Billing.buy(activity) }
-                }) { Text(if (intro) "Start trial" else if (allowed) "OK" else "Unlock ${Billing.price}") }
+                }) { Text(if (intro) "Start trial" else "Unlock ${Billing.price}") }
             },
             dismissButton = if (!intro && !allowed) {
                 { TextButton(onClick = { showDialog = false }) { Text("Not now") } }
@@ -157,13 +152,8 @@ fun Screen() {
                     if (running) "VPN running \u2013 limits active" else "VPN is off",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Text(
-                    when {
-                        Access.premium -> "Full version unlocked"
-                        Access.trialStart == 0L -> "Free trial: 5 minutes"
-                        allowed -> "Free trial: ${fmt(left)} left"
-                        else -> "Trial ended"
-                    },
+                if (Access.premium || (Access.trialStarted && !allowed)) Text(
+                    if (Access.premium) "Full version unlocked" else "Trial ended",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Button(
@@ -171,7 +161,7 @@ fun Screen() {
                         if (running) {
                             ctx.startService(vpnIntent(ctx, ThrottleVpnService.ACTION_STOP))
                         } else if (!allowed) {
-                            if (Access.trialStart == 0L) showDialog = true else Billing.buy(activity)
+                            if (!Access.trialStarted) showDialog = true else Billing.buy(activity)
                         } else {
                             val i = VpnService.prepare(ctx)
                             if (i != null) launcher.launch(i)
