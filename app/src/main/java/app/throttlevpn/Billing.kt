@@ -81,8 +81,8 @@ object Billing {
                     .build()
             )
         ).build()
-        client.queryProductDetailsAsync(params) { r, list ->
-            val d = if (r.responseCode == BillingClient.BillingResponseCode.OK) list.firstOrNull() else null
+        client.queryProductDetailsAsync(params) { r, res ->
+            val d = if (r.responseCode == BillingClient.BillingResponseCode.OK) res.productDetailsList.firstOrNull() else null
             if (d != null) {
                 details = d
                 d.oneTimePurchaseOfferDetails?.formattedPrice?.let { price = it }

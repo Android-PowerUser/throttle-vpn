@@ -5,11 +5,11 @@ plugins {
 
 android {
     namespace = "app.throttlevpn"
-    compileSdk = 34
+    compileSdk = 36
     defaultConfig {
         applicationId = "app.throttlevpn"
         minSdk = 29
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
     }
@@ -30,6 +30,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("com.android.billingclient:billing:7.0.0")
+    implementation("com.android.billingclient:billing:8.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
