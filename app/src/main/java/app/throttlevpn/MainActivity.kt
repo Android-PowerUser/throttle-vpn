@@ -53,7 +53,7 @@ import androidx.core.graphics.drawable.toBitmap
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
 
-data class AppInfo(val pkg: String, val label: String)
+data class AppInfo(val pkg: String, val label: String, val system: Boolean = false)
 
 class MainActivity : ComponentActivity() {
     override fun onResume() {
@@ -126,9 +126,20 @@ fun Screen() {
     LaunchedEffect(Unit) {
         thread {
             val pm = ctx.packageManager
-            apps = pm.getInstalledApplications(0)
-                .filter { it.packageName != ctx.packageName && pm.getLaunchIntentForPackage(it.packageName) != null }
-                .map { AppInfo(it.packageName, it.loadLabel(pm).toString()) }
+            @Suppress("DEPRECATION")
+            apps = pm.getInstalledPackages(android.content.pm.PackageManager.GET_PERMISSIONS)
+                .filter {
+                    it.packageName != ctx.packageName &&
+                        it.requestedPermissions?.contains(android.Manifest.permission.INTERNET) == true
+                }
+                .map {
+                    val ai = it.applicationInfo
+                    AppInfo(
+                        it.packageName,
+                        ai?.loadLabel(pm)?.toString() ?: it.packageName,
+                        ai != null && (ai.flags and (android.content.pm.ApplicationInfo.FLAG_SYSTEM or android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
+                    )
+                }
         }
     }
 
@@ -224,7 +235,7 @@ fun Screen() {
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(app.label, style = MaterialTheme.typography.titleSmall)
-                            Text(app.pkg, style = MaterialTheme.typography.bodySmall)
+                            Text(if (app.system) "System \u00b7 ${app.pkg}" else app.pkg, style = MaterialTheme.typography.bodySmall)
                         }
                         Switch(checked = sel, onCheckedChange = {
                             LimitStore.select(app.pkg, it)

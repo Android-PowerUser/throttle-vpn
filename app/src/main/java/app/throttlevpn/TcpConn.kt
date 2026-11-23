@@ -105,6 +105,7 @@ class TcpConn(
                 if (n < 0) break
                 if (n == 0) continue
                 lastActive = System.currentTimeMillis()
+                if (isBlocked()) { abort(); return }
                 for (l in down) l.acquire(n)
                 sendData(buf, n)
             }
@@ -117,6 +118,8 @@ class TcpConn(
         }
         if (!closed) sendFin()
     }
+
+    private fun isBlocked(): Boolean = up.any { it.rate < 0 } || down.any { it.rate < 0 }
 
     private fun chunkSize(): Int {
         var r = 0L
@@ -221,6 +224,7 @@ class TcpConn(
                     try { c.shutdownOutput() } catch (_: Exception) {}
                     return
                 }
+                if (isBlocked()) { abort(); return }
                 for (l in up) l.acquire(d.size)
                 val bb = ByteBuffer.wrap(d)
                 while (bb.hasRemaining()) c.write(bb)

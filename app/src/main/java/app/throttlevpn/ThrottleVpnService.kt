@@ -253,6 +253,10 @@ class ThrottleVpnService : VpnService() {
             }
             val uid = ownerUid(6, src, sp, dst, dp)
             val (up, down) = limitersFor(uid)
+            if (up.any { it.rate < 0 } || down.any { it.rate < 0 }) {
+                write(Net.buildTcp(dst, src, dp, sp, 0, seq + 1, Net.RST or Net.ACK, 0, null, 0, 0))
+                return
+            }
             val conn = TcpConn(this, src, sp, dst, dp, seq, mss, win, up, down) { tcpMap.remove(key, it) }
             tcpMap[key] = conn
             conn.start()

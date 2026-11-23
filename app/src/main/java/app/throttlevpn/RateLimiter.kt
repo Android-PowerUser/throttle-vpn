@@ -1,6 +1,6 @@
 package app.throttlevpn
 
-/** Simple pacing limiter. rate = bytes/second, 0 = unlimited. Rate can change live. */
+/** Simple pacing limiter. rate = bytes/second, 0 = unlimited, negative = blocked (0 B/s). Rate can change live. */
 class RateLimiter {
     @Volatile var rate: Long = 0L
     private var next = 0L
@@ -30,7 +30,8 @@ class RateLimiter {
     /** Non-blocking: returns false (=> drop packet) if too much is queued. */
     fun tryAcquire(n: Int): Boolean {
         val r = rate
-        if (r <= 0) return true
+        if (r < 0) return false
+        if (r == 0L) return true
         synchronized(lock) {
             val now = System.nanoTime()
             if (next < now - burstNs) next = now - burstNs
